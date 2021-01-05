@@ -507,6 +507,7 @@ class OpticalFlowDataset(object):
             assert(len(image1.shape) == 3 and image1.shape[2] == 3 and len(image2.shape) == 3 and image2.shape[2] == 3)
 
         # Read in label, if any
+        print('label_path: ', label_path)
         if label_path:
             label = flow_read(label_path)
             assert (len(label.shape) == 3 and label.shape[2] == 2)
