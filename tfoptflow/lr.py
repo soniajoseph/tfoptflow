@@ -63,7 +63,7 @@ def lr_multisteps_long(g_step_op, boundaries=None, values=None):
     if boundaries is None and values is None:
         boundaries = [400000, 600000, 800000, 1000000, 1200000]
         values = [0.0001 / (2 ** boundary) for boundary in range(len(boundaries) + 1)]
-    return tf.train.piecewise_constant(g_step_op, boundaries, values, 'lr_multisteps')
+    return tf.compat.v1.train.piecewise_constant(g_step_op, boundaries, values, 'lr_multisteps')
 
 
 def lr_multisteps_fine(g_step_op, boundaries=None, values=None):
@@ -77,7 +77,7 @@ def lr_multisteps_fine(g_step_op, boundaries=None, values=None):
     if boundaries is None and values is None:
         boundaries = [1400000, 1500000, 1600000, 1700000]
         values = [0.00001 / (2 ** boundary) for boundary in range(len(boundaries) + 1)]
-    return tf.train.piecewise_constant(g_step_op, boundaries, values, 'lr_multisteps')
+    return tf.compat.v1.train.piecewise_constant(g_step_op, boundaries, values, 'lr_multisteps')
 
 
 def lr_cyclic_long(g_step_op, base_lr=None, max_lr=None, step_size=None):
@@ -146,7 +146,7 @@ def _lr_cyclic(g_step_op, base_lr=None, max_lr=None, step_size=None, gamma=0.999
         The cyclic learning rate.
     """
     assert (mode in ['triangular', 'triangular2', 'exp_range'])
-    lr = tf.convert_to_tensor(base_lr, name="learning_rate")
+    lr = tf.convert_to_tensor(value=base_lr, name="learning_rate")
     global_step = tf.cast(g_step_op, lr.dtype)
     step_size = tf.cast(step_size, lr.dtype)
 

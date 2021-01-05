@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 model_pwcnet.py
 
@@ -8,6 +9,7 @@ Written by Phil Ferriere
 Licensed under the MIT License (see LICENSE for details)
 """
 
+# +
 from __future__ import absolute_import, division, print_function
 import time
 import datetime
@@ -16,7 +18,12 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tqdm import trange
-from tensorflow.contrib.mixed_precision import LossScaleOptimizer, FixedLossScaleManager
+
+from tensorflow.python.compiler.tensorrt import trt_convert as trt
+
+from tensorflow.keras.mixed_precision.experimental import LossScaleOptimizer
+from tensorflow.mixed_precision.experimental import FixedLossScale
+# -
 
 from model_base import ModelBase
 from optflow import flow_write, flow_write_as_png, flow_mag_stats
@@ -267,20 +274,20 @@ class ModelPWCNet(ModelBase):
         epsilon = 1e-08 if self.opts['use_mixed_precision'] is False else 1e-4
         assert (self.opts['train_mode'] in ['train', 'fine-tune'])
         if self.opts['loss_fn'] == 'loss_multiscale':
-            self.optim = tf.train.AdamOptimizer(self.lr, epsilon=epsilon)
+            self.optim = tf.compat.v1.train.AdamOptimizer(self.lr, epsilon=epsilon)
         else:
-            self.optim = tf.train.ProximalGradientDescentOptimizer(self.lr)
+            self.optim = tf.compat.v1.train.ProximalGradientDescentOptimizer(self.lr)
 
         # Keep track of the gradients and losses per tower
         tower_grads, losses, metrics = [], [], []
 
         # Get the current variable scope so we can reuse all variables we need once we get
         # to the next iteration of the for loop below
-        with tf.variable_scope(tf.get_variable_scope()) as outer_scope:
+        with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope()) as outer_scope:
             for n, ops_device in enumerate(self.opts['gpu_devices']):
                 print(f"  Building tower_{n}...")
                 # Use the assign_to_device function to ensure that variables are created on the controller.
-                with tf.device(assign_to_device(ops_device, self.opts['controller'])), tf.name_scope(f'tower_{n}'):
+                with tf.device(assign_to_device(ops_device, self.opts['controller'])), tf.compat.v1.name_scope(f'tower_{n}'):
                     # Get a slice of the input batch and groundtruth label
                     x_tnsr = self.x_tnsr[n * self.opts['batch_size']:(n + 1) * self.opts['batch_size'], :]
                     y_tnsr = self.y_tnsr[n * self.opts['batch_size']:(n + 1) * self.opts['batch_size'], :]
@@ -298,14 +305,14 @@ class ModelPWCNet(ModelBase):
                         loss = loss_unreg
                     else:
                         loss_reg = self.opts['gamma'] * \
-                            tf.reduce_sum([tf.nn.l2_loss(var) for var in tf.trainable_variables()])
+                            tf.reduce_sum(input_tensor=[tf.nn.l2_loss(var) for var in tf.compat.v1.trainable_variables()])
                         loss = loss_unreg + loss_reg
 
                     # Evaluate model performance on this tower
-                    metrics.append(tf.reduce_mean(tf.norm(y_tnsr - flow_pred_tnsr, ord=2, axis=3)))
+                    metrics.append(tf.reduce_mean(input_tensor=tf.norm(tensor=y_tnsr - flow_pred_tnsr, ord=2, axis=3)))
 
                     # Compute the gradients for this tower, but don't apply them yet
-                    with tf.name_scope("compute_gradients"):
+                    with tf.compat.v1.name_scope("compute_gradients"):
                         # The function compute_gradients() returns a list of (gradient, variable) pairs
                         if self.opts['use_mixed_precision'] is True:
                             grads, vars = zip(*self.optim.compute_gradients(loss * self.opts['loss_scaler']))
@@ -324,7 +331,7 @@ class ModelPWCNet(ModelBase):
                 print(f"  ...tower_{n} built.")
 
         # Apply the gradients on the controlling device
-        with tf.name_scope("apply_gradients"), tf.device(self.opts['controller']):
+        with tf.compat.v1.name_scope("apply_gradients"), tf.device(self.opts['controller']):
             # Note that what we are doing here mathematically is equivalent to returning the average loss over the
             # towers and compute the gradients relative to that. Unfortunately, this would place all gradient
             # computations on one device, which is why we had to compute the gradients above per tower and need to
@@ -332,8 +339,8 @@ class ModelPWCNet(ModelBase):
             # and turns it into a single (gradient, variables) list.
             avg_grads_op = average_gradients(tower_grads)
             self.optim_op = self.optim.apply_gradients(avg_grads_op, self.g_step_op)
-            self.loss_op = tf.reduce_mean(losses)
-            self.metric_op = tf.reduce_mean(metrics)
+            self.loss_op = tf.reduce_mean(input_tensor=losses)
+            self.metric_op = tf.reduce_mean(input_tensor=metrics)
 
         if self.opts['verbose']:
             print("... model towers built.")
@@ -521,7 +528,7 @@ class ModelPWCNet(ModelBase):
         if self.opts['gamma'] == 0.:
             self.loss_op = loss_unreg
         else:
-            loss_reg = self.opts['gamma'] * tf.reduce_sum([tf.nn.l2_loss(var) for var in tf.trainable_variables()])
+            loss_reg = self.opts['gamma'] * tf.reduce_sum(input_tensor=[tf.nn.l2_loss(var) for var in tf.compat.v1.trainable_variables()])
             self.loss_op = loss_unreg + loss_reg
 
     def setup_optim_op(self):
@@ -532,9 +539,9 @@ class ModelPWCNet(ModelBase):
         # for float32 epsilon=1e-08, for float16 use epsilon=1e-4
         epsilon = 1e-08 if self.opts['use_mixed_precision'] is False else 1e-4
         if self.opts['loss_fn'] == 'loss_multiscale':
-            self.optim = tf.train.AdamOptimizer(self.lr, epsilon=epsilon)
+            self.optim = tf.compat.v1.train.AdamOptimizer(self.lr, epsilon=epsilon)
         else:
-            self.optim = tf.train.ProximalGradientDescentOptimizer(self.lr)
+            self.optim = tf.compat.v1.train.ProximalGradientDescentOptimizer(self.lr)
 
         if self.opts['use_mixed_precision'] is True:
             # Choose a loss scale manager which decides how to pick the right loss scale throughout the training process.
@@ -544,10 +551,10 @@ class ModelPWCNet(ModelBase):
             self.optim = LossScaleOptimizer(self.optim, loss_scale_mgr)
 
             # Let minimize() take care of both computing the gradients and applying them to the model variables
-            self.optim_op = self.optim.minimize(self.loss_op, self.g_step_op, tf.trainable_variables())
+            self.optim_op = self.optim.minimize(self.loss_op, self.g_step_op, tf.compat.v1.trainable_variables())
         else:
             # Let minimize() take care of both computing the gradients and applying them to the model variables
-            self.optim_op = self.optim.minimize(self.loss_op, self.g_step_op, tf.trainable_variables())
+            self.optim_op = self.optim.minimize(self.loss_op, self.g_step_op, tf.compat.v1.trainable_variables())
 
     def config_train_ops(self):
         """Configure training ops.
@@ -630,8 +637,8 @@ class ModelPWCNet(ModelBase):
                 val_tf_ds = self.ds.get_tf_ds(batch_size, self.num_gpus, split='val', sess=self.sess)
 
                 # Ops for initializing the two different iterators
-                train_next_batch = train_tf_ds.make_one_shot_iterator().get_next()
-                val_next_batch = val_tf_ds.make_one_shot_iterator().get_next()
+                train_next_batch = tf.compat.v1.data.make_one_shot_iterator(train_tf_ds).get_next()
+                val_next_batch = tf.compat.v1.data.make_one_shot_iterator(val_tf_ds).get_next()
 
             while step < self.opts['max_steps'] + 1:
 
@@ -808,11 +815,11 @@ class ModelPWCNet(ModelBase):
 
         if self.mode in ['train_noval', 'train_with_val']:
             # In online evaluation mode, we only care about the average loss and metric for the batch:
-            self.metric_op = tf.reduce_mean(tf.norm(y_tnsr - flow_pred_tnsr, ord=2, axis=3))
+            self.metric_op = tf.reduce_mean(input_tensor=tf.norm(tensor=y_tnsr - flow_pred_tnsr, ord=2, axis=3))
 
         if self.mode in ['val', 'val_notrain']:
             # In offline evaluation mode, we actually care about each individual prediction and metric -> axis=(1, 2)
-            self.metric_op = tf.reduce_mean(tf.norm(y_tnsr - flow_pred_tnsr, ord=2, axis=3), axis=(1, 2))
+            self.metric_op = tf.reduce_mean(input_tensor=tf.norm(tensor=y_tnsr - flow_pred_tnsr, ord=2, axis=3), axis=(1, 2))
 
     def eval(self, metric_name=None, save_preds=False):
         """Evaluation loop. Test the trained model on the validation split of the dataset.
@@ -829,7 +836,7 @@ class ModelPWCNet(ModelBase):
                 tf_ds = self.ds.get_tf_ds(batch_size=batch_size, split='val', sess=self.sess)
 
                 # Ops for initializing the iterator
-                next_batch = tf_ds.make_one_shot_iterator().get_next()
+                next_batch = tf.compat.v1.data.make_one_shot_iterator(tf_ds).get_next()
 
             # Store results in a dataframe
             if metric_name is None:
@@ -906,7 +913,7 @@ class ModelPWCNet(ModelBase):
                 tf_ds = self.ds.get_tf_ds(batch_size=batch_size, split='test', sess=self.sess)
 
                 # Ops for initializing the iterator
-                next_batch = tf_ds.make_one_shot_iterator().get_next()
+                next_batch = tf.compat.v1.data.make_one_shot_iterator(tf_ds).get_next()
 
             # Chunk dataset
             rounds, rounds_left = divmod(self.ds.tst_size, batch_size)
@@ -1083,19 +1090,19 @@ class ModelPWCNet(ModelBase):
         # Make the feature pyramids 1-based for better readability down the line
         num_chann = [None, 16, 32, 64, 96, 128, 196]
         c1, c2 = [None], [None]
-        init = tf.keras.initializers.he_normal()
-        with tf.variable_scope(name):
+        init = tf.compat.v1.keras.initializers.he_normal()
+        with tf.compat.v1.variable_scope(name):
             for pyr, x, reuse, name in zip([c1, c2], [x_tnsr[:, 0], x_tnsr[:, 1]], [None, True], ['c1', 'c2']):
                 for lvl in range(1, self.opts['pyr_lvls'] + 1):
                     # tf.layers.conv2d(inputs, filters, kernel_size, strides=(1, 1), padding='valid', ... , name, reuse)
                     # reuse is set to True because we want to learn a single set of weights for the pyramid
                     # kernel_initializer = 'he_normal' or tf.keras.initializers.he_normal(seed=None)
                     f = num_chann[lvl]
-                    x = tf.layers.conv2d(x, f, 3, 2, 'same', kernel_initializer=init, name=f'conv{lvl}a', reuse=reuse)
+                    x = tf.compat.v1.layers.conv2d(x, f, 3, 2, 'same', kernel_initializer=init, name=f'conv{lvl}a', reuse=reuse)
                     x = tf.nn.leaky_relu(x, alpha=0.1)  # , name=f'relu{lvl+1}a') # default alpha is 0.2 for TF
-                    x = tf.layers.conv2d(x, f, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}aa', reuse=reuse)
+                    x = tf.compat.v1.layers.conv2d(x, f, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}aa', reuse=reuse)
                     x = tf.nn.leaky_relu(x, alpha=0.1)  # , name=f'relu{lvl+1}aa')
-                    x = tf.layers.conv2d(x, f, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}b', reuse=reuse)
+                    x = tf.compat.v1.layers.conv2d(x, f, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}b', reuse=reuse)
                     x = tf.nn.leaky_relu(x, alpha=0.1, name=f'{name}{lvl}')
                     pyr.append(x)
         return c1, c2
@@ -1174,7 +1181,7 @@ class ModelPWCNet(ModelBase):
         if self.dbg:
             msg = f'Adding {op_name} with inputs {c2.op.name} and {sc_up_flow.op.name}'
             print(msg)
-        with tf.name_scope(name):
+        with tf.compat.v1.name_scope(name):
             return dense_image_warp(c2, sc_up_flow, name=op_name)
 
     def deconv(self, x, lvl, name='up_flow'):
@@ -1216,9 +1223,9 @@ class ModelPWCNet(ModelBase):
         op_name = f'{name}{lvl}'
         if self.dbg:
             print(f'Adding {op_name} with input {x.op.name}')
-        with tf.variable_scope('upsample'):
+        with tf.compat.v1.variable_scope('upsample'):
             # tf.layers.conv2d_transpose(inputs, filters, kernel_size, strides=(1, 1), padding='valid', ... , name)
-            return tf.layers.conv2d_transpose(x, 2, 4, 2, 'same', name=op_name)
+            return tf.compat.v1.layers.conv2d_transpose(x, 2, 4, 2, 'same', name=op_name)
 
     ###
     # Cost Volume helpers
@@ -1273,7 +1280,7 @@ class ModelPWCNet(ModelBase):
         op_name = f'corr{lvl}'
         if self.dbg:
             print(f'Adding {op_name} with inputs {c1.op.name} and {warp.op.name}')
-        with tf.name_scope(name):
+        with tf.compat.v1.name_scope(name):
             return cost_volume(c1, warp, self.opts['search_range'], op_name)
 
     ###
@@ -1411,8 +1418,8 @@ class ModelPWCNet(ModelBase):
             flow2 = self.predict_flow2(x)
         """
         op_name = f'flow{lvl}'
-        init = tf.keras.initializers.he_normal()
-        with tf.variable_scope(name):
+        init = tf.compat.v1.keras.initializers.he_normal()
+        with tf.compat.v1.variable_scope(name):
             if c1 is None and up_flow is None and up_feat is None:
                 if self.dbg:
                     print(f'Adding {op_name} with input {corr.op.name}')
@@ -1423,27 +1430,27 @@ class ModelPWCNet(ModelBase):
                     print(msg)
                 x = tf.concat([corr, c1, up_flow, up_feat], axis=3)
 
-            conv = tf.layers.conv2d(x, 128, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_0')
+            conv = tf.compat.v1.layers.conv2d(x, 128, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_0')
             act = tf.nn.leaky_relu(conv, alpha=0.1)  # default alpha is 0.2 for TF
             x = tf.concat([act, x], axis=3) if self.opts['use_dense_cx'] else act
 
-            conv = tf.layers.conv2d(x, 128, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_1')
+            conv = tf.compat.v1.layers.conv2d(x, 128, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_1')
             act = tf.nn.leaky_relu(conv, alpha=0.1)
             x = tf.concat([act, x], axis=3) if self.opts['use_dense_cx'] else act
 
-            conv = tf.layers.conv2d(x, 96, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_2')
+            conv = tf.compat.v1.layers.conv2d(x, 96, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_2')
             act = tf.nn.leaky_relu(conv, alpha=0.1)
             x = tf.concat([act, x], axis=3) if self.opts['use_dense_cx'] else act
 
-            conv = tf.layers.conv2d(x, 64, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_3')
+            conv = tf.compat.v1.layers.conv2d(x, 64, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_3')
             act = tf.nn.leaky_relu(conv, alpha=0.1)
             x = tf.concat([act, x], axis=3) if self.opts['use_dense_cx'] else act
 
-            conv = tf.layers.conv2d(x, 32, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_4')
+            conv = tf.compat.v1.layers.conv2d(x, 32, 3, 1, 'same', kernel_initializer=init, name=f'conv{lvl}_4')
             act = tf.nn.leaky_relu(conv, alpha=0.1)  # will also be used as an input by the context network
             upfeat = tf.concat([act, x], axis=3, name=f'upfeat{lvl}') if self.opts['use_dense_cx'] else act
 
-            flow = tf.layers.conv2d(upfeat, 2, 3, 1, 'same', name=op_name)
+            flow = tf.compat.v1.layers.conv2d(upfeat, 2, 3, 1, 'same', name=op_name)
 
             return upfeat, flow
 
@@ -1501,21 +1508,21 @@ class ModelPWCNet(ModelBase):
         op_name = f'refined_flow{lvl}'
         if self.dbg:
             print(f'Adding {op_name} sum of dc_convs_chain({feat.op.name}) with {flow.op.name}')
-        init = tf.keras.initializers.he_normal()
-        with tf.variable_scope(name):
-            x = tf.layers.conv2d(feat, 128, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}1')
+        init = tf.compat.v1.keras.initializers.he_normal()
+        with tf.compat.v1.variable_scope(name):
+            x = tf.compat.v1.layers.conv2d(feat, 128, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}1')
             x = tf.nn.leaky_relu(x, alpha=0.1)  # default alpha is 0.2 for TF
-            x = tf.layers.conv2d(x, 128, 3, 1, 'same', dilation_rate=2, kernel_initializer=init, name=f'dc_conv{lvl}2')
+            x = tf.compat.v1.layers.conv2d(x, 128, 3, 1, 'same', dilation_rate=2, kernel_initializer=init, name=f'dc_conv{lvl}2')
             x = tf.nn.leaky_relu(x, alpha=0.1)
-            x = tf.layers.conv2d(x, 128, 3, 1, 'same', dilation_rate=4, kernel_initializer=init, name=f'dc_conv{lvl}3')
+            x = tf.compat.v1.layers.conv2d(x, 128, 3, 1, 'same', dilation_rate=4, kernel_initializer=init, name=f'dc_conv{lvl}3')
             x = tf.nn.leaky_relu(x, alpha=0.1)
-            x = tf.layers.conv2d(x, 96, 3, 1, 'same', dilation_rate=8, kernel_initializer=init, name=f'dc_conv{lvl}4')
+            x = tf.compat.v1.layers.conv2d(x, 96, 3, 1, 'same', dilation_rate=8, kernel_initializer=init, name=f'dc_conv{lvl}4')
             x = tf.nn.leaky_relu(x, alpha=0.1)
-            x = tf.layers.conv2d(x, 64, 3, 1, 'same', dilation_rate=16, kernel_initializer=init, name=f'dc_conv{lvl}5')
+            x = tf.compat.v1.layers.conv2d(x, 64, 3, 1, 'same', dilation_rate=16, kernel_initializer=init, name=f'dc_conv{lvl}5')
             x = tf.nn.leaky_relu(x, alpha=0.1)
-            x = tf.layers.conv2d(x, 32, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}6')
+            x = tf.compat.v1.layers.conv2d(x, 32, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}6')
             x = tf.nn.leaky_relu(x, alpha=0.1)
-            x = tf.layers.conv2d(x, 2, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}7')
+            x = tf.compat.v1.layers.conv2d(x, 2, 3, 1, 'same', dilation_rate=1, kernel_initializer=init, name=f'dc_conv{lvl}7')
 
             return tf.add(flow, x, name=op_name)
 
@@ -1540,7 +1547,7 @@ class ModelPWCNet(ModelBase):
             Written by Daigo Hirooka, Copyright (c) 2018 Daigo Hirooka
             MIT License
         """
-        with tf.variable_scope(name):
+        with tf.compat.v1.variable_scope(name):
 
             # Extract pyramids of CNN features from both input images (1-based lists))
             c1, c2 = self.extract_features(x_tnsr)
@@ -1566,7 +1573,7 @@ class ModelPWCNet(ModelBase):
                     # Estimate the optical flow
                     upfeat, flow = self.predict_flow(corr, c1[lvl], up_flow, up_feat, lvl)
 
-                _, lvl_height, lvl_width, _ = tf.unstack(tf.shape(c1[lvl]))
+                _, lvl_height, lvl_width, _ = tf.unstack(tf.shape(input=c1[lvl]))
 
                 if lvl != self.opts['flow_pred_lvl']:
                     if self.opts['use_res_cx']:
@@ -1587,7 +1594,7 @@ class ModelPWCNet(ModelBase):
                     if self.dbg:
                         print(f'Upsampling {flow.op.name} by {scaler} in each dimension.')
                     size = (lvl_height * scaler, lvl_width * scaler)
-                    flow_pred = tf.image.resize_bilinear(flow, size, name="flow_pred") * scaler
+                    flow_pred = tf.image.resize(flow, size, name="flow_pred", method=tf.image.ResizeMethod.BILINEAR) * scaler
                     break
 
             return flow_pred, flow_pyr

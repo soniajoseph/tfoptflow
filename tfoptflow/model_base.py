@@ -11,17 +11,23 @@ Licensed under the MIT License (see LICENSE for details)
 from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
+# import tensorflow.contrib.slim as slim
+import tf_slim as slim
 
+# +
 from ckpt_mgr import BestCheckpointSaver
 from logger import OptFlowTBLogger
 from dataset_base import _DBG_TRAIN_VAL_TEST_SETS
 from lr import lr_multisteps_long, lr_multisteps_fine, lr_cyclic_long, lr_cyclic_fine
 from mixed_precision import float32_variable_storage_getter
 
+from tensorflow.python.framework import ops
+# -
+
 _DEBUG_USE_REF_IMPL = False
 
 
+# +
 class ModelBase:
     def __init__(self, name='base', mode='train_with_val', session=None, options=None):
         """Initialize the ModelBase object
@@ -56,7 +62,9 @@ class ModelBase:
                     self.opts['cyclic_lr_stepsize'] = 50
                     self.opts['max_steps'] = 500  # max number of training iterations (i.e., batches to run)
 
-        tf.reset_default_graph()
+#         tf.reset_default_graph()
+
+        ops.reset_default_graph()
         self.graph = tf.Graph()
         with self.graph.as_default():
             # Configure a TF session, if one doesn't already exist
@@ -74,16 +82,17 @@ class ModelBase:
             sess: optional TF session
         """
         if sess is None:
-            config = tf.ConfigProto()
+#             config = tf.ConfigProto()
+            config = tf.compat.v1.ConfigProto()
             config.gpu_options.allow_growth = True
             if self.dbg:
                 config.log_device_placement = True
             config.allow_soft_placement = True
-            self.sess = tf.Session(config=config)
+            self.sess = tf.compat.v1.Session(config=config)
         else:
             self.sess = sess
 
-        tf.logging.set_verbosity(tf.logging.INFO)
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
     ###
     # Training-specific helpers
@@ -116,7 +125,7 @@ class ModelBase:
         if self.mode in ['train_noval', 'train_with_val']:
             self.saver = BestCheckpointSaver(self.opts['ckpt_dir'], self.name, self.opts['max_to_keep'], maximize=False)
         else:
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
 
     def save_ckpt(self, ranking_value=0):
         """Save a model checkpoint
@@ -146,13 +155,13 @@ class ModelBase:
             self.last_ckpt = None
             if self.opts['train_mode'] == 'fine-tune':
                 # In fine-tuning mode, we just want to load the trained params from the file and that's it...
-                assert(tf.train.checkpoint_exists(self.opts['ckpt_path']))
+                assert(tf.compat.v1.train.checkpoint_exists(self.opts['ckpt_path']))
                 if self.opts['verbose']:
                     print(f"Initializing from pre-trained model at {self.opts['ckpt_path']} for finetuning...\n")
                 # ...however, the AdamOptimizer also stores variables in the graph, so reinitialize them as well
-                self.sess.run(tf.variables_initializer(self.optim.variables()))
+                self.sess.run(tf.compat.v1.variables_initializer(self.optim.variables()))
                 # Now initialize the trained params with actual values from the checkpoint
-                _saver = tf.train.Saver(var_list=tf.trainable_variables())
+                _saver = tf.compat.v1.train.Saver(var_list=tf.compat.v1.trainable_variables())
                 _saver.restore(self.sess, self.opts['ckpt_path'])
                 if self.opts['verbose']:
                     print("... model initialized")
@@ -175,7 +184,7 @@ class ModelBase:
                     if self.opts['verbose']:
                         print(f"Initializing model with random values for initial training...\n")
                     assert (self.mode in ['train_noval', 'train_with_val'])
-                    self.sess.run(tf.global_variables_initializer())
+                    self.sess.run(tf.compat.v1.global_variables_initializer())
                     if self.opts['verbose']:
                         print("... model initialized")
         else:
@@ -212,8 +221,8 @@ class ModelBase:
         """
         # Increase the batch size with the number of GPUs dedicated to computing TF ops
         batch_size = self.num_gpus * self.opts['batch_size']
-        self.x_tnsr = tf.placeholder(self.opts['x_dtype'], [batch_size] + self.opts['x_shape'], 'x_tnsr')
-        self.y_tnsr = tf.placeholder(self.opts['y_dtype'], [batch_size] + self.opts['y_shape'], 'y_tnsr')
+        self.x_tnsr = tf.compat.v1.placeholder(self.opts['x_dtype'], [batch_size] + self.opts['x_shape'], 'x_tnsr')
+        self.y_tnsr = tf.compat.v1.placeholder(self.opts['y_dtype'], [batch_size] + self.opts['y_shape'], 'y_tnsr')
 
     def build_graph(self):
         """ Build the complete graph in TensorFlow
@@ -228,7 +237,7 @@ class ModelBase:
         # In validation mode, configure validation ops (loss, metrics)
         if self.mode in ['train_noval', 'train_with_val']:
             if self.opts['use_mixed_precision'] is True:
-                with tf.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
+                with tf.compat.v1.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
                     if self.num_gpus == 1:
                         self.build_model()
                         self.config_train_ops()
@@ -245,7 +254,7 @@ class ModelBase:
 
         elif self.mode in ['val', 'val_notrain']:
             if self.opts['use_mixed_precision'] is True:
-                with tf.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
+                with tf.compat.v1.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
                     self.build_model()
                     self.setup_metrics_ops()
             else:
@@ -254,7 +263,7 @@ class ModelBase:
 
         else:  # inference mode
             if self.opts['use_mixed_precision'] is True:
-                with tf.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
+                with tf.compat.v1.variable_scope('fp32_vars', custom_getter=float32_variable_storage_getter):
                     self.build_model()
             else:
                 self.build_model()
@@ -306,7 +315,7 @@ class ModelBase:
         """Setup a learning rate training schedule and setup the global step. Override as necessary.
         """
         assert (self.opts['lr_policy'] in [None, 'multisteps', 'cyclic'])
-        self.g_step_op = tf.train.get_or_create_global_step()
+        self.g_step_op = tf.compat.v1.train.get_or_create_global_step()
 
         # Use a set learning rate, if requested
         if self.opts['lr_policy'] is None:
@@ -335,7 +344,7 @@ class ModelBase:
     # Debug utils
     ###
     def summary(self):
-        model_vars = tf.trainable_variables()
+        model_vars = tf.compat.v1.trainable_variables()
         slim.model_analyzer.analyze_vars(model_vars, print_info=True)
 
     def print_config(self):
@@ -359,4 +368,4 @@ class ModelBase:
             # if self.mode in ['train_noval', 'train_with_val']:
             if self.dbg:
                 self.summary()
-            print(f"  {'trainable params':22} {np.sum([np.prod(v.shape) for v in tf.trainable_variables()])}")
+            print(f"  {'trainable params':22} {np.sum([np.prod(v.shape) for v in tf.compat.v1.trainable_variables()])}")

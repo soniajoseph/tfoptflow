@@ -1060,24 +1060,24 @@ class OpticalFlowDataset(object):
         if split == 'train':
             assert(self.mode in ['train_noval', 'train_with_val'])
             tf_ds = tf.data.Dataset.from_tensor_slices(self._trn_idx)
-            tf_ds = tf_ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=len(self._trn_idx), count=-1))
-            tf_ds = tf_ds.apply(tf.contrib.data.map_and_batch(
-                map_func=lambda idx: tf.py_func(self._train_stub, [idx], [tf.uint8, tf.float32, tf.string]),
+            tf_ds = tf_ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=len(self._trn_idx), count=-1))
+            tf_ds = tf_ds.apply(tf.data.experimental.map_and_batch(
+                map_func=lambda idx: tf.compat.v1.py_func(self._train_stub, [idx], [tf.uint8, tf.float32, tf.string]),
                 batch_size=batch_size * num_gpus, num_parallel_batches=threads))
 
         elif split == 'val':
             assert(self.mode in ['val', 'val_notrain', 'train_noval', 'train_with_val'])
             tf_ds = tf.data.Dataset.from_tensor_slices(self._val_idx)
-            tf_ds = tf_ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=len(self._val_idx), count=-1))
-            tf_ds = tf_ds.apply(tf.contrib.data.map_and_batch(
-                map_func=lambda idx: tf.py_func(self._val_stub, [idx], [tf.uint8, tf.float32, tf.string, tf.string]),
+            tf_ds = tf_ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=len(self._val_idx), count=-1))
+            tf_ds = tf_ds.apply(tf.data.experimental.map_and_batch(
+                map_func=lambda idx: tf.compat.v1.py_func(self._val_stub, [idx], [tf.uint8, tf.float32, tf.string, tf.string]),
                 batch_size=batch_size * num_gpus, num_parallel_batches=threads))
 
         else:  # if split == 'test':
             tf_ds = tf.data.Dataset.from_tensor_slices(self._tst_idx)
-            tf_ds = tf_ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=len(self._tst_idx), count=-1))
-            tf_ds = tf_ds.apply(tf.contrib.data.map_and_batch(
-                map_func=lambda idx: tf.py_func(self._test_stub, [idx], [tf.uint8, tf.string, tf.string]),
+            tf_ds = tf_ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=len(self._tst_idx), count=-1))
+            tf_ds = tf_ds.apply(tf.data.experimental.map_and_batch(
+                map_func=lambda idx: tf.compat.v1.py_func(self._test_stub, [idx], [tf.uint8, tf.string, tf.string]),
                 batch_size=batch_size * num_gpus, num_parallel_batches=threads))
 
         # Return tf dataset

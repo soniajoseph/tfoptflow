@@ -40,11 +40,11 @@ def tf_where(condition, x=None, y=None, *args, **kwargs):
         Written by Till Hoffmann
     """
     if x is None and y is None:
-        return tf.where(condition, x, y, *args, **kwargs)
+        return tf.compat.v1.where(condition, x, y, *args, **kwargs)
     else:
-        _shape = tf.broadcast_dynamic_shape(tf.shape(condition), tf.shape(x))
+        _shape = tf.broadcast_dynamic_shape(tf.shape(input=condition), tf.shape(input=x))
         _broadcaster = tf.ones(_shape)
-        return tf.where(condition & (_broadcaster > 0.0), x * _broadcaster, y * _broadcaster, *args, **kwargs)
+        return tf.compat.v1.where(condition & (_broadcaster > 0.0), x * _broadcaster, y * _broadcaster, *args, **kwargs)
 
 
 def scale(img, zoom_factor):

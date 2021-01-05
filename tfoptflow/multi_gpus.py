@@ -46,7 +46,7 @@ def assign_to_device(ops_device, var_device):
     """
 
     def _assign(op):
-        node_def = op if isinstance(op, tf.NodeDef) else op.node_def
+        node_def = op if isinstance(op, tf.compat.v1.NodeDef) else op.node_def
         if node_def.op in PS_OPS:
             return var_device
         else:
@@ -78,7 +78,7 @@ def average_gradients(tower_grads):
     for grad_and_vars in zip(*tower_grads):
         # Each grad_and_vars looks like the following: ((grad0_gpu0, var0_gpu0),..., (grad0_gpuN, var0_gpuN))
         grads = [grad for grad, _ in grad_and_vars]
-        grad = tf.reduce_mean(grads, 0)
+        grad = tf.reduce_mean(input_tensor=grads, axis=0)
         # Keep in mind that the Variables are redundant because they are shared across towers. So, we only need to
         # return the first tower's pointer to the Variable.
         var = grad_and_vars[0][1]

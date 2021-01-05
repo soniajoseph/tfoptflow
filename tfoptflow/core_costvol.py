@@ -24,15 +24,15 @@ def cost_volume(c1, warp, search_range, name):
         warp: Warped level of the feature pyramid of image22
         search_range: Search range (maximum displacement)
     """
-    padded_lvl = tf.pad(warp, [[0, 0], [search_range, search_range], [search_range, search_range], [0, 0]])
-    _, h, w, _ = tf.unstack(tf.shape(c1))
+    padded_lvl = tf.pad(tensor=warp, paddings=[[0, 0], [search_range, search_range], [search_range, search_range], [0, 0]])
+    _, h, w, _ = tf.unstack(tf.shape(input=c1))
     max_offset = search_range * 2 + 1
 
     cost_vol = []
     for y in range(0, max_offset):
         for x in range(0, max_offset):
             slice = tf.slice(padded_lvl, [0, y, x, 0], [-1, h, w, -1])
-            cost = tf.reduce_mean(c1 * slice, axis=3, keepdims=True)
+            cost = tf.reduce_mean(input_tensor=c1 * slice, axis=3, keepdims=True)
             cost_vol.append(cost)
     cost_vol = tf.concat(cost_vol, axis=3)
     cost_vol = tf.nn.leaky_relu(cost_vol, alpha=0.1, name=name)

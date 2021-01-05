@@ -47,16 +47,16 @@ def pwcnet_loss(y, y_hat_pyr, opts):
     # Use a different norm based on the training mode we're in (training vs fine-tuning)
     norm_order = 2 if opts['loss_fn'] == 'loss_multiscale' else 1
 
-    with tf.name_scope(opts['loss_fn']):
+    with tf.compat.v1.name_scope(opts['loss_fn']):
         total_loss = 0.
-        _, gt_height, _, _ = tf.unstack(tf.shape(y))
+        _, gt_height, _, _ = tf.unstack(tf.shape(input=y))
 
         # Add individual pyramid level losses to the total loss
         for lvl in range(opts['pyr_lvls'] - opts['flow_pred_lvl'] + 1):
-            _, lvl_height, lvl_width, _ = tf.unstack(tf.shape(y_hat_pyr[lvl]))
+            _, lvl_height, lvl_width, _ = tf.unstack(tf.shape(input=y_hat_pyr[lvl]))
 
             # Scale the full-size groundtruth to the correct lower res level
-            scaled_flow_gt = tf.image.resize_bilinear(y, (lvl_height, lvl_width))
+            scaled_flow_gt = tf.image.resize(y, (lvl_height, lvl_width), method=tf.image.ResizeMethod.BILINEAR)
             scaled_flow_gt /= tf.cast(gt_height / lvl_height, dtype=tf.float32)
 
             # Compute the norm of the difference between scaled groundtruth and prediction
@@ -64,8 +64,8 @@ def pwcnet_loss(y, y_hat_pyr, opts):
                 y_hat_pyr_lvl = y_hat_pyr[lvl]
             else:
                 y_hat_pyr_lvl = tf.cast(y_hat_pyr[lvl], dtype=tf.float32)
-            norm = tf.norm(scaled_flow_gt - y_hat_pyr_lvl, ord=norm_order, axis=3)
-            level_loss = tf.reduce_mean(tf.reduce_sum(norm, axis=(1, 2)))
+            norm = tf.norm(tensor=scaled_flow_gt - y_hat_pyr_lvl, ord=norm_order, axis=3)
+            level_loss = tf.reduce_mean(input_tensor=tf.reduce_sum(input_tensor=norm, axis=(1, 2)))
 
             # Scale total loss contribution of the loss at each individual level
             total_loss += opts['alphas'][lvl] * tf.pow(level_loss + opts['epsilon'], opts['q'])

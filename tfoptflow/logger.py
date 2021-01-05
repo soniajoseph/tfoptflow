@@ -40,10 +40,10 @@ class TBLogger(object):
             graph: Optional, TF graph
         """
         if graph is None:
-            graph = tf.get_default_graph()
+            graph = tf.compat.v1.get_default_graph()
         if tag is not None:
             log_dir = log_dir + tag
-        self.writer = tf.summary.FileWriter(log_dir, graph=graph)
+        self.writer = tf.compat.v1.summary.FileWriter(log_dir, graph=graph)
         self._tag = tag
 
     @property
@@ -60,7 +60,7 @@ class TBLogger(object):
             value: scalar value to log
             step: training iteration
         """
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+        summary = tf.compat.v1.Summary(value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step)
 
     def log_images(self, tag, images, step, IDs=None):
@@ -86,14 +86,14 @@ class TBLogger(object):
                 cmap = None
             plt.imsave(faux_file, image, cmap=cmap, format='png')  # (?, H, W, ?)
             # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=faux_file.getvalue(), height=image.shape[0],
+            img_sum = tf.compat.v1.Summary.Image(encoded_image_string=faux_file.getvalue(), height=image.shape[0],
                                        width=image.shape[1])
             # Create a Summary value
             img_tag = tag.format(IDs[n]) if IDs is not None else tag.format(n)
-            im_summaries.append(tf.Summary.Value(tag=img_tag, image=img_sum))
+            im_summaries.append(tf.compat.v1.Summary.Value(tag=img_tag, image=img_sum))
 
         # Create and write Summary
-        summary = tf.Summary(value=im_summaries)
+        summary = tf.compat.v1.Summary(value=im_summaries)
         self.writer.add_summary(summary, step)
 
     def log_histogram(self, tag, values, step, bins=1000):
@@ -105,7 +105,7 @@ class TBLogger(object):
         counts, bin_edges = np.histogram(values, bins=bins)
 
         # Fill fields of histogram proto
-        hist = tf.HistogramProto()
+        hist = tf.compat.v1.HistogramProto()
         hist.min = float(np.min(values))
         hist.max = float(np.max(values))
         hist.num = int(np.prod(values.shape))
@@ -124,7 +124,7 @@ class TBLogger(object):
             hist.bucket.append(c)
 
         # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        summary = tf.compat.v1.Summary(value=[tf.compat.v1.Summary.Value(tag=tag, histo=hist)])
         self.writer.add_summary(summary, step)
         self.writer.flush()
 
@@ -166,12 +166,12 @@ class OptFlowTBLogger(TBLogger):
             plt.close()
 
             # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=faux_file.getvalue())
+            img_sum = tf.compat.v1.Summary.Image(encoded_image_string=faux_file.getvalue())
 
             # Create a Summary value
             img_tag = tag.format(IDs[n]) if IDs is not None else tag.format(n)
-            im_summaries.append(tf.Summary.Value(tag=img_tag, image=img_sum))
+            im_summaries.append(tf.compat.v1.Summary.Value(tag=img_tag, image=img_sum))
 
         # Create and write Summary
-        summary = tf.Summary(value=im_summaries)
+        summary = tf.compat.v1.Summary(value=im_summaries)
         self.writer.add_summary(summary, step)
